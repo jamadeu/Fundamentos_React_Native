@@ -7,8 +7,6 @@ import React, {
 } from 'react';
 
 import AsyncStorage from '@react-native-community/async-storage';
-import api from 'src/services/api';
-import { Product } from 'src/pages/Cart/styles';
 
 interface Product {
   id: string;
@@ -32,80 +30,117 @@ const CartProvider: React.FC = ({ children }) => {
 
   useEffect(() => {
     async function loadProducts(): Promise<void> {
-      const [productsLoaded] = await AsyncStorage.multiGet(['Products']);
+      const productsLoaded = await AsyncStorage.getItem('@GoMarketPlace: cart');
 
-      if (productsLoaded[1]) {
-        setProducts([...products, JSON.parse(productsLoaded[1])]);
+      if (productsLoaded) {
+        setProducts(JSON.parse(productsLoaded));
       }
     }
 
     loadProducts();
-  }, [products]);
+  }, []);
 
   const addToCart = useCallback(
-    async (product: Product) => {
-      await api.post('products', product);
+    async product => {
+      const existProductOnCart = products.find(item => item.id === product.id);
+      if (existProductOnCart) {
+        const updatedProduct: Product = {
+          id: existProductOnCart.id,
+          title: existProductOnCart.title,
+          image_url: existProductOnCart.image_url,
+          price: existProductOnCart.price,
+          quantity: existProductOnCart.quantity + 1,
+        };
+        const updatedList: Product[] = products.filter(
+          item => item.id !== updatedProduct.id,
+        );
 
-      await AsyncStorage.setItem('products', JSON.stringify(product));
+        setProducts([...updatedList, updatedProduct]);
 
-      setProducts([...products, product]);
+        await AsyncStorage.setItem(
+          '@GoMarketPlace: cart',
+          JSON.stringify([...updatedList, updatedProduct]),
+        );
+      }
+
+      if (!existProductOnCart) {
+        const newProductOnCart: Product = {
+          id: product.id,
+          title: product.title,
+          image_url: product.image_url,
+          price: Number(product.price),
+          quantity: 1,
+        };
+
+        setProducts([...products, newProductOnCart]);
+      }
+
+      await AsyncStorage.setItem(
+        '@GoMarketPlace: cart',
+        JSON.stringify(products),
+      );
     },
     [products],
   );
 
   const increment = useCallback(
-    async (id: string) => {
-      const response = await api.get(`products/${id}`);
+    async id => {
+      const newList: Product[] = products.map(item => {
+        if (item.id === id) {
+          const newQuantity: Product = {
+            id: item.id,
+            title: item.title,
+            image_url: item.image_url,
+            price: item.price,
+            quantity: item.quantity + 1,
+          };
+          return newQuantity;
+        }
+        return item;
+      });
+      setProducts(newList);
 
-      const loadedProduct = response.data;
-
-      if (!loadedProduct) {
-        throw new Error('Product not found');
-      }
-
-      loadedProduct.quantity += 1;
-
-      await api.put(`products/${id}`, loadedProduct);
-
-      setProducts(
-        products.map(product => {
-          if (product.id === id) {
-            return loadedProduct;
-          }
-          return product;
-        }),
+      await AsyncStorage.setItem(
+        '@GoMarketPlace: cart',
+        JSON.stringify(newList),
       );
     },
     [products],
   );
 
   const decrement = useCallback(
-    async (id: string) => {
-      const response = await api.get(`products/${id}`);
+    async id => {
+      const checkItem: Product | undefined = products.find(
+        item => item.id === id,
+      );
 
-      const loadedProduct = response.data;
+      if (checkItem !== undefined) {
+        if (checkItem.quantity === 1) {
+          const newList = products.filter(item => item.id !== id);
 
-      if (!loadedProduct) {
-        throw new Error('Product not found');
-      }
-
-      loadedProduct.quantity -= 1;
-
-      if (loadedProduct.quantity === 0) {
-        await api.delete(`products/${id}`);
-        setProducts(products.filter(product => product.id !== id));
-      } else {
-        await api.put(`products/${id}`, loadedProduct);
-
-        setProducts(
-          products.map(product => {
-            if (product.id === id) {
-              return loadedProduct;
+          setProducts(newList);
+        } else {
+          const newList: Product[] = products.map(item => {
+            if (item.id === id) {
+              const newQuantity: Product = {
+                id: item.id,
+                title: item.title,
+                image_url: item.image_url,
+                price: item.price,
+                quantity: item.quantity - 1,
+              };
+              return newQuantity;
             }
-            return product;
-          }),
-        );
+            return item;
+          });
+
+          setProducts(newList);
+        }
       }
+      await AsyncStorage.setItem(
+        '@GoMarketPlace: cart',
+        JSON.stringify(products),
+      );
     },
     [products],
   );
