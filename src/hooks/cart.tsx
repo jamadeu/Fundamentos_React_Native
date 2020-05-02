@@ -7,6 +7,8 @@ import React, {
 } from 'react';
 
 import AsyncStorage from '@react-native-community/async-storage';
+import api from 'src/services/api';
+import { Product } from 'src/pages/Cart/styles';
 
 interface Product {
   id: string;
@@ -30,23 +32,83 @@ const CartProvider: React.FC = ({ children }) => {
 
   useEffect(() => {
     async function loadProducts(): Promise<void> {
-      // TODO LOAD ITEMS FROM ASYNC STORAGE
+      const [productsLoaded] = await AsyncStorage.multiGet(['Products']);
+
+      if (productsLoaded[1]) {
+        setProducts([...products, JSON.parse(productsLoaded[1])]);
+      }
     }
 
     loadProducts();
-  }, []);
+  }, [products]);
 
-  const addToCart = useCallback(async product => {
-    // TODO ADD A NEW ITEM TO THE CART
-  }, []);
+  const addToCart = useCallback(
+    async (product: Product) => {
+      await api.post('products', product);
 
-  const increment = useCallback(async id => {
-    // TODO INCREMENTS A PRODUCT QUANTITY IN THE CART
-  }, []);
+      await AsyncStorage.setItem('products', JSON.stringify(product));
 
-  const decrement = useCallback(async id => {
-    // TODO DECREMENTS A PRODUCT QUANTITY IN THE CART
-  }, []);
+      setProducts([...products, product]);
+    },
+    [products],
+  );
+
+  const increment = useCallback(
+    async (id: string) => {
+      const response = await api.get(`products/${id}`);
+
+      const loadedProduct = response.data;
+
+      if (!loadedProduct) {
+        throw new Error('Product not found');
+      }
+
+      loadedProduct.quantity += 1;
+
+      await api.put(`products/${id}`, loadedProduct);
+
+      setProducts(
+        products.map(product => {
+          if (product.id === id) {
+            return loadedProduct;
+          }
+          return product;
+        }),
+      );
+    },
+    [products],
+  );
+
+  const decrement = useCallback(
+    async (id: string) => {
+      const response = await api.get(`products/${id}`);
+
+      const loadedProduct = response.data;
+
+      if (!loadedProduct) {
+        throw new Error('Product not found');
+      }
+
+      loadedProduct.quantity -= 1;
+
+      if (loadedProduct.quantity === 0) {
+        await api.delete(`products/${id}`);
+        setProducts(products.filter(product => product.id !== id));
+      } else {
+        await api.put(`products/${id}`, loadedProduct);
+
+        setProducts(
+          products.map(product => {
+            if (product.id === id) {
+              return loadedProduct;
+            }
+            return product;
+          }),
+        );
+      }
+    },
+    [products],
+  );
 
   const value = React.useMemo(
     () => ({ addToCart, increment, decrement, products }),
